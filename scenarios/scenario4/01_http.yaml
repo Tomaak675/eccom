@@ -1,0 +1,64 @@
+# scenario4: throughput ceiling with more resources on both sides —
+# scenario2's protocol matrix with six sender processes (one core each on
+# the sender's host; leave some free for the kernel, dockerd and sshd), the
+# Go receiver, and a LINEAR ramp: 32 B random payload; 1800 msg/s (300 per
+# process) plus 600 msg/s (100 per process) per 10 s step, 24 steps
+# (1800 -> 15600 msg/s), with a 10 s pause after every step so the queues
+# drain and each step starts empty; up to 10 000 sends in flight (~1667 per
+# process). A Python agent is one event loop on one core, hence a process
+# per core; the Go receiver uses every core of its host. The connection
+# pool is unbounded here (client.max_connections: 0) — see
+# 09_http_pool.yaml for the bounded twin. The per-step table (summary.json
+# "ramp", plots/ramp_over_time.png) locates the knee; the CPU-per-step
+# table of `eccom compare` shows which side maxed out.
+# Identical traffic in every file; only the protocol block differs.
+#   eccom run scenarios/scenario4 --hosts hosts/<your-hosts>.yaml --pause-s 30
+name: s4_http
+interaction: one_way
+
+topology:
+  sender: edge
+  receiver: cloud
+
+payload:
+  size_bytes: 32
+  content: random
+  seed: 42
+
+load:
+  mode: ramp
+  messages_per_second: 1800    # first step: 300 msg/s per sender process
+  rate_increment: 600          # +100 msg/s per sender process per step (linear ramp)
+  step_duration_s: 10
+  step_pause_s: 10             # quiet gap after every step: the backlog drains, the next step starts empty
+  duration_s: 240              # 24 steps of sending: 1800 -> 15600 msg/s
+  concurrency: 10000           # ~1667 per sender process: sized so it never limits the schedule
+  senders: 6                   # one per core of the sender's host; leave some free for the kernel, dockerd and sshd
+
+receiver:
+  artificial_processing_delay_ms: 0
+  control_port: 8081
+  control_bind_host: 0.0.0.0
+  implementation: go           # a Python receiver is one event loop on one core; Go uses every core
+
+experiment:
+  warmup_s: 5                  # the ramp truncated to its first step
+  cooldown_s: 10               # lets the receiver drain its backlog before shutdown
+
+instrumentation:
+  system_metrics: true
+  system_metrics_interval_s: 1.0
+  link_capacity: true          # iperf3 both ways before the run: the uplink's capacity
+
+protocol:
+  type: http
+  tcp_nodelay: true           # Nagle off on every socket (the default; explicit so the run records it)
+  http:
+    endpoint:
+      host: cloud
+      port: 8080
+    client:
+      keep_alive: true
+      timeout_s: 5
+    server:
+      bind_host: 0.0.0.0

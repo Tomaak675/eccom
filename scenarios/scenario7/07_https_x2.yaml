@@ -1,0 +1,67 @@
+# scenario7: scenario6's homes ramp (60 devices, 292 msg/s, ~129.5 kB/s per
+# home) with TLS on all six TLS-capable variants; each file runs a four-step
+# window placed just below the ceiling expected on your hardware. See
+# 01_https_x1.yaml and docs/scenario-parameters.md.
+# HTTPS, bounded pool of 250 (the protocol block of scenario6's https
+# variant). Every step that raises the in-flight count opens new TLS
+# connections, so look for a handshake spike at step starts.
+name: s7_https_x2
+interaction: one_way
+
+topology:
+  sender: edge
+  receiver: cloud
+
+home:                          # the referential smart home, camera excluded
+  seed: 42
+  sensors:
+    - { type: light,       count: 4,  rate_hz: 1,  size_bytes: 4 }
+    - { type: smart_plug,  count: 40, rate_hz: 1,  size_bytes: 16 }
+    - { type: temperature, count: 4,  rate_hz: 1,  size_bytes: 4 }
+    - { type: motion,      count: 4,  rate_hz: 1,  size_bytes: 4 }
+    - { type: microphone,  count: 4,  rate_hz: 50, size_bytes: 640 }
+    - { type: mmwave,      count: 4,  rate_hz: 10, size_bytes: 20 }
+
+load:
+  mode: homes
+  homes: 10                    # first step: 5 batches of 2 homes per sensor slot = 1460 msg/s; set just below the ceiling you expect
+  homes_increment: 2           # one more batch per step: +292 msg/s per step for every factor
+  aggregation_factor: 2        # readings of one sensor slot across this many homes travel as one message
+  step_duration_s: 10
+  step_pause_s: 10             # quiet gap after every step: the backlog drains, the next step starts empty
+  duration_s: 40               # 4 steps of sending: 10 -> 16 homes, 1460 -> 2336 msg/s
+  concurrency: 10000           # sized so it never limits the schedule; the HTTP pool and the MQTT window are the caps
+
+receiver:
+  artificial_processing_delay_ms: 0
+  control_port: 8081
+  control_bind_host: 0.0.0.0
+  implementation: go           # a Python agent is one event loop on one core; the Go receiver uses every core
+
+experiment:
+  warmup_s: 5                  # the ramp truncated to its first step
+  cooldown_s: 10               # lets the receiver drain its backlog before shutdown
+
+instrumentation:
+  system_metrics: true
+  system_metrics_interval_s: 1.0
+  link_capacity: true          # iperf3 both ways before the run: records the uplink capacity next to the x4/x8 byte rates
+
+protocol:
+  type: http
+  tcp_nodelay: true           # Nagle off on every socket (the default; explicit so the run records it)
+  http:
+    endpoint:
+      host: cloud
+      port: 8443
+    client:
+      keep_alive: true
+      timeout_s: 5
+      max_connections: 250    # bounded pool: a backlog waits for a free connection instead of dialling
+    server:
+      bind_host: 0.0.0.0
+  tls:
+    enabled: true
+    cert_file: certs/server.pem
+    key_file: certs/server-key.pem
+    ca_file: certs/server.pem

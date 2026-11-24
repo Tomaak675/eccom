@@ -1,0 +1,41 @@
+# One-way MQTT telemetry (publish/subscribe, no reply). With QoS 1 the
+# send-ack statistic is the broker's PUBACK latency; with QoS 0 there is no
+# ack and only the clock-offset-corrected one-way latency remains.
+name: mqtt_one_way_baseline
+interaction: one_way
+
+topology:
+  sender: edge
+  receiver: cloud
+
+protocol:
+  type: mqtt
+  mqtt:
+    endpoint:
+      host: 127.0.0.1
+      port: 1883
+    client:
+      qos: 1
+      timeout_s: 5
+
+payload:
+  size_bytes: 1024
+  content: zeros
+
+load:
+  mode: constant_rate
+  messages_per_second: 100
+  duration_s: 60
+  concurrency: 10
+
+receiver:
+  artificial_processing_delay_ms: 0
+  control_port: 8081
+
+experiment:
+  warmup_s: 10
+  cooldown_s: 5
+
+instrumentation:
+  system_metrics: true
+  system_metrics_interval_s: 1.0

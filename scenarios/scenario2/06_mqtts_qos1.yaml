@@ -1,0 +1,60 @@
+# scenario2: throughput ceiling under a ramped load (10 msg/s x2 every 5 s,
+# 60 s, 32 B random payload, 10 000 in flight). See 01_http.yaml.
+# Identical traffic in every file; only the protocol block differs.
+#
+# TLS variant of 04_mqtt_qos1 (the MQTT counterpart of 02_https): one
+# long-lived TLS connection, so against 04 this prices TLS record processing
+# under load rather than handshakes.
+name: s2_mqtts_qos1
+interaction: one_way
+
+topology:
+  sender: edge
+  receiver: cloud
+
+payload:
+  size_bytes: 32
+  content: random
+  seed: 42
+
+load:
+  mode: ramp
+  messages_per_second: 10
+  rate_multiplier: 2
+  step_duration_s: 5
+  step_pause_s: 10             # quiet gap after every step: the backlog drains, the next step starts empty
+  duration_s: 60
+  concurrency: 10000
+
+receiver:
+  artificial_processing_delay_ms: 0
+  control_port: 8081
+  control_bind_host: 0.0.0.0
+
+experiment:
+  warmup_s: 5
+  cooldown_s: 10
+
+instrumentation:
+  system_metrics: true
+  system_metrics_interval_s: 1.0
+
+protocol:
+  type: mqtt
+  tcp_nodelay: true           # Nagle off on every socket (the default; explicit so the run records it)
+  mqtt:
+    endpoint:
+      host: cloud
+      port: 8883
+    client:
+      qos: 1
+      timeout_s: 5
+      max_inflight_messages: 10000
+    broker:
+      max_inflight_messages: 0
+      max_queued_messages: 0
+  tls:
+    enabled: true
+    cert_file: certs/server.pem
+    key_file: certs/server-key.pem
+    ca_file: certs/server.pem

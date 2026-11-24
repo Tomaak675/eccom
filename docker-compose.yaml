@@ -1,0 +1,63 @@
+# Runs a compose scenario with the receiver ("cloud") and sender ("edge")
+# in separate containers sharing ./runs for artifacts.
+#
+# HTTP:
+#   RUN_ID=run1 docker compose up --build --exit-code-from edge
+# MQTT (adds the mosquitto broker service):
+#   SCENARIO=mqtt_baseline_compose.yaml RUN_ID=run2 \
+#     docker compose --profile mqtt up --build --exit-code-from edge
+# Then:
+#   eccom analyze runs/<RUN_ID>
+#
+# --exit-code-from stops the receiver (SIGTERM -> graceful event flush) once
+# the sender finishes.
+services:
+  broker:
+    image: eclipse-mosquitto:2
+    command: ["mosquitto", "-c", "/mosquitto-no-auth.conf"]
+    profiles: ["mqtt"]
+
+  cloud:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    command:
+      [
+        "agent",
+        "--role", "receiver",
+        "--scenario", "/scenarios/${SCENARIO:-http_baseline_compose.yaml}",
+        "--run-dir", "/runs/${RUN_ID:-compose-run}",
+      ]
+    volumes:
+      - ./scenarios:/scenarios:ro
+      - ./runs:/runs
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health', timeout=1)",
+        ]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  edge:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    command:
+      [
+        "agent",
+        "--role", "sender",
+        "--scenario", "/scenarios/${SCENARIO:-http_baseline_compose.yaml}",
+        "--run-dir", "/runs/${RUN_ID:-compose-run}",
+        "--peer-control", "cloud:8081",
+      ]
+    depends_on:
+      cloud:
+        condition: service_healthy
+    volumes:
+      - ./scenarios:/scenarios:ro
+      - ./runs:/runs

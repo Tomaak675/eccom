@@ -1,0 +1,55 @@
+# Example: sender on an edge device, receiver on a cloud VM, both over SSH.
+# Copy to remote.yaml (gitignored, so credentials stay out of history)
+# and fill in.
+#
+# Targets need only DOCKER and SSH — no repo clone, no Python setup. At run
+# start the framework syncs the source tree to <working_dir>/src, builds the
+# agent image natively on each host (first build takes minutes, later builds
+# are layer-cached), and runs the agents as containers with --network host.
+# working_dir is a scratch directory, created automatically.
+#
+# Prefer key_file over password. For remote receivers set
+# receiver.control_bind_host: 0.0.0.0 (and for HTTP server.bind_host: 0.0.0.0)
+# in the scenario, and point the protocol endpoint host at the receiver:
+# its role label (host: cloud, resolved to the ssh host below) or its address
+# as reachable FROM THE SENDER (the orchestrator machine must also reach the
+# receiver's control port and, for MQTT, the broker port).
+hosts:
+  edge:
+    deployment: ssh
+    ssh:
+      host: 192.168.1.50
+      port: 22
+      user: edge
+      key_file: ~/.ssh/edge_cloud_key
+      working_dir: /home/edge/eccom-runtime
+      # image: eccom-agent            # tag for the image built on this host
+  cloud:
+    deployment: ssh
+    ssh:
+      host: 20.0.0.1                  # public IP / DNS name
+      port: 22
+      user: cloud
+      key_file: ~/.ssh/edge_cloud_key
+      working_dir: /home/cloud/eccom-runtime
+      # Optional caps for every container started on this host (agent and
+      # managed broker): on a small VM a runaway receiver can otherwise take
+      # every core and all memory, starve sshd/dockerd and hang the suite.
+      # With caps it is throttled / OOM-killed instead (swap is disabled for
+      # the container). Kernel socket buffers count against memory too.
+      # resources:
+      #   cpus: 1.5                     # leave the OS half a core of two
+      #   memory: 512m                  # below the memory free after boot
+
+# MQTT scenarios need a broker. By default the runner starts a broker
+# Docker container on the receiver's host ("cloud") and removes it after the
+# run; the section below only customizes that. Which broker (mosquitto or
+# NanoMQ) is the scenario's protocol.mqtt.broker.implementation; docker_image
+# pins an image for it (unset = the implementation's default). Set managed:
+# false to use a broker you run yourself (the scenario's mqtt.endpoint must
+# point at it).
+broker:
+  run_on: cloud
+  managed: true
+  # docker_image: eclipse-mosquitto:2
+  container_name: eccom-mqtt-broker

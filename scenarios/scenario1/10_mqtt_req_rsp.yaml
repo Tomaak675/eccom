@@ -1,0 +1,58 @@
+# scenario1: baseline latency (128 B random payload, 1 msg/s x 60 s).
+# See 01_http.yaml.
+# Identical traffic in every file; only the protocol block differs.
+#
+# Interaction variant of 04_mqtt_qos1 and the MQTT counterpart of
+# 09_http_req_rsp: every message waits for an application reply, measured on
+# the sender's monotonic clock (SEND_STARTED -> REPLY_RECEIVED), so the
+# headline rtt carries no clock-offset uncertainty.
+#
+# The reply is a second QoS 1 publish through the broker: the request
+# travels eccom/requests, the receiver answers on the sender's
+# eccom/replies/<client-id> topic, routed by the MQTT v5 Response Topic and
+# Correlation Data properties. That is four hops (sender -> broker ->
+# receiver -> broker -> sender) against 09's two; with the broker on the
+# receiver's host only two of them cross the WAN, as for HTTP. send_ack
+# (PUBACK) is still recorded, so the gap between it and rtt is what a
+# correlated reply over a broker costs. delivery is still computed, so 04
+# and 10 compare on the same metric.
+name: s1_mqtt_req_rsp
+interaction: request_response
+
+topology:
+  sender: edge
+  receiver: cloud
+
+payload:
+  size_bytes: 128
+  content: random
+  seed: 42
+
+load:
+  mode: constant_rate
+  messages_per_second: 1
+  duration_s: 60
+  concurrency: 1
+
+receiver:
+  artificial_processing_delay_ms: 0
+  control_port: 8081
+  control_bind_host: 0.0.0.0
+
+experiment:
+  warmup_s: 5
+  cooldown_s: 2
+
+instrumentation:
+  system_metrics: true
+  system_metrics_interval_s: 1.0
+
+protocol:
+  type: mqtt
+  mqtt:
+    endpoint:
+      host: cloud
+      port: 1883
+    client:
+      qos: 1
+      timeout_s: 5

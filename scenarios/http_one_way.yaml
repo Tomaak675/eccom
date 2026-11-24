@@ -1,0 +1,44 @@
+# One-way HTTP telemetry: fire-and-forget messages, no application reply.
+# Latency = clock-offset-corrected edge SEND_STARTED -> cloud MESSAGE_RECEIVED
+# (the sender probes the receiver's clock via the control endpoint), plus the
+# sender-side send-ack (204 received).
+name: http_one_way_baseline
+interaction: one_way
+
+topology:
+  sender: edge
+  receiver: cloud
+
+protocol:
+  type: http
+  http:
+    endpoint:
+      host: 127.0.0.1
+      port: 8080
+    client:
+      keep_alive: true
+      timeout_s: 5
+    server:
+      bind_host: 127.0.0.1
+
+payload:
+  size_bytes: 1024
+  content: zeros
+
+load:
+  mode: constant_rate
+  messages_per_second: 100
+  duration_s: 60
+  concurrency: 10
+
+receiver:
+  artificial_processing_delay_ms: 0
+  control_port: 8081
+
+experiment:
+  warmup_s: 10
+  cooldown_s: 5
+
+instrumentation:
+  system_metrics: true
+  system_metrics_interval_s: 1.0

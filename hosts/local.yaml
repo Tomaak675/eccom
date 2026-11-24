@@ -1,0 +1,6 @@
+# Both roles as local subprocesses (same as omitting --hosts entirely).
+hosts:
+  edge:
+    deployment: local
+  cloud:
+    deployment: local

@@ -1,0 +1,60 @@
+# scenario3: payload-size sweep at a fixed 10 msg/s (128 B x4 every 10 s for
+# 80 s, 20 in flight). See 01_http.yaml.
+# Identical traffic in every file; only the protocol block differs.
+#
+# TLS variant of 01_http. With 20 in flight the receiver holds at most 20
+# TLS sessions, so connection count is not a factor here. Against 01 this
+# prices TLS record processing per byte (AES-GCM on both hosts) as the
+# message grows.
+name: s3_https
+interaction: one_way
+
+topology:
+  sender: edge
+  receiver: cloud
+
+payload:
+  size_bytes: 128             # the first step; load.size_multiplier grows it
+  content: random
+  seed: 42
+
+load:
+  mode: ramp
+  messages_per_second: 10
+  size_multiplier: 4
+  step_duration_s: 10
+  step_pause_s: 10             # quiet gap after every step: the backlog drains, the next step starts empty
+  duration_s: 80
+  concurrency: 20             # backpressure once a message takes longer than 2 s
+
+receiver:
+  artificial_processing_delay_ms: 0
+  control_port: 8081
+  control_bind_host: 0.0.0.0
+
+experiment:
+  warmup_s: 5                 # the ramp truncated to its first step: 128 B
+  cooldown_s: 10
+
+instrumentation:
+  system_metrics: true
+  system_metrics_interval_s: 1.0
+  link_capacity: true         # iperf3 both ways on this port before the run: the uplink ceiling
+
+protocol:
+  type: http
+  tcp_nodelay: true           # Nagle off on every socket (the default; explicit so the run records it)
+  http:
+    endpoint:
+      host: cloud
+      port: 8443
+    client:
+      keep_alive: true
+      timeout_s: 5
+    server:
+      bind_host: 0.0.0.0
+  tls:
+    enabled: true
+    cert_file: certs/server.pem
+    key_file: certs/server-key.pem
+    ca_file: certs/server.pem

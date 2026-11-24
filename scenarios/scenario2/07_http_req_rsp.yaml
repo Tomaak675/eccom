@@ -1,0 +1,55 @@
+# scenario2: throughput ceiling under a ramped load (10 msg/s x2 every 5 s,
+# 60 s, 32 B random payload, 10 000 in flight). See 01_http.yaml.
+# Identical traffic in every file; only the protocol block differs.
+#
+# Interaction variant of 01_http: every message waits for an application
+# reply, so the headline is the round trip on the sender's clock (no
+# clock-offset uncertainty) and the receiver answers only after its handler
+# ran. Against 01 this shows what coupling the ack to the handler costs once
+# the receiver is busy.
+name: s2_http_req_rsp
+interaction: request_response
+
+topology:
+  sender: edge
+  receiver: cloud
+
+payload:
+  size_bytes: 32
+  content: random
+  seed: 42
+
+load:
+  mode: ramp
+  messages_per_second: 10
+  rate_multiplier: 2
+  step_duration_s: 5
+  step_pause_s: 10             # quiet gap after every step: the backlog drains, the next step starts empty
+  duration_s: 60
+  concurrency: 10000
+
+receiver:
+  artificial_processing_delay_ms: 0
+  control_port: 8081
+  control_bind_host: 0.0.0.0
+
+experiment:
+  warmup_s: 5
+  cooldown_s: 10
+
+instrumentation:
+  system_metrics: true
+  system_metrics_interval_s: 1.0
+
+protocol:
+  type: http
+  tcp_nodelay: true           # Nagle off on every socket (the default; explicit so the run records it)
+  http:
+    endpoint:
+      host: cloud
+      port: 8080
+    client:
+      keep_alive: true
+      timeout_s: 5
+    server:
+      bind_host: 0.0.0.0

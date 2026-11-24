@@ -1,0 +1,59 @@
+# scenario3: payload-size sweep at a fixed 10 msg/s. Scenario2's protocol
+# matrix carries one schedule: a 128 B random payload quadrupled every 10 s
+# for 80 s (8 steps, 128 B -> 2 MiB), up to 20 sends in flight, Nagle off.
+# The rate is far below any throughput ceiling, so what moves the latency is
+# the message itself: segments per message, TCP window growth, serialization
+# on the uplink, and at the top steps the uplink's capacity (10 msg/s x
+# 2 MiB = 168 Mbit/s offered).
+# Identical traffic in every file; only the protocol block differs.
+# Run the whole suite:
+#   eccom run scenarios/scenario3 --hosts hosts/<your-hosts>.yaml --pause-s 30
+#
+# HTTP baseline: plain HTTP over keep-alive connections.
+name: s3_http
+interaction: one_way
+
+topology:
+  sender: edge
+  receiver: cloud
+
+payload:
+  size_bytes: 128             # the first step; load.size_multiplier grows it
+  content: random
+  seed: 42
+
+load:
+  mode: ramp
+  messages_per_second: 10
+  size_multiplier: 4
+  step_duration_s: 10
+  step_pause_s: 10             # quiet gap after every step: the backlog drains, the next step starts empty
+  duration_s: 80
+  concurrency: 20             # backpressure once a message takes longer than 2 s
+
+receiver:
+  artificial_processing_delay_ms: 0
+  control_port: 8081
+  control_bind_host: 0.0.0.0
+
+experiment:
+  warmup_s: 5                 # the ramp truncated to its first step: 128 B
+  cooldown_s: 10
+
+instrumentation:
+  system_metrics: true
+  system_metrics_interval_s: 1.0
+  link_capacity: true         # iperf3 both ways on this port before the run: the uplink ceiling
+
+protocol:
+  type: http
+  tcp_nodelay: true           # Nagle off on every socket (the default; explicit so the run records it)
+  http:
+    endpoint:
+      host: cloud
+      port: 8080
+    client:
+      keep_alive: true
+      timeout_s: 5
+    server:
+      bind_host: 0.0.0.0

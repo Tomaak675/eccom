@@ -1,0 +1,64 @@
+# scenario4: throughput ceiling with six sender processes and the Go
+# receiver under a linear ramp (1800 msg/s +600 per 10 s step, 24 steps to
+# 15600 msg/s with a 10 s drain pause between them, 32 B random payload,
+# 10 000 in flight).
+# See 01_http.yaml.
+# Identical traffic in every file; only the protocol block differs. The
+# connection pool is bounded (client.max_connections: 250, see 09); only
+# 01_http runs unbounded, to show connection churn once.
+#
+# Interaction variant of 01_http: every message waits for an application
+# reply, so the headline is the round trip on the sender's clock (no
+# clock-offset uncertainty) and the receiver answers only after its handler
+# ran. Against 01 this shows what coupling the ack to the handler costs once
+# the receiver is busy.
+name: s4_http_req_rsp
+interaction: request_response
+
+topology:
+  sender: edge
+  receiver: cloud
+
+payload:
+  size_bytes: 32
+  content: random
+  seed: 42
+
+load:
+  mode: ramp
+  messages_per_second: 1800    # first step: 300 msg/s per sender process
+  rate_increment: 600          # +100 msg/s per sender process per step (linear ramp)
+  step_duration_s: 10
+  step_pause_s: 10             # quiet gap after every step: the backlog drains, the next step starts empty
+  duration_s: 240              # 24 steps of sending: 1800 -> 15600 msg/s
+  concurrency: 10000           # ~1667 per sender process: sized so it never limits the schedule
+  senders: 6                   # one per core of the sender's host; leave some free for the kernel, dockerd and sshd
+
+receiver:
+  artificial_processing_delay_ms: 0
+  control_port: 8081
+  control_bind_host: 0.0.0.0
+  implementation: go           # a Python receiver is one event loop on one core; Go uses every core
+
+experiment:
+  warmup_s: 5
+  cooldown_s: 10
+
+instrumentation:
+  system_metrics: true
+  system_metrics_interval_s: 1.0
+  link_capacity: true          # iperf3 both ways before the run: the uplink's capacity
+
+protocol:
+  type: http
+  tcp_nodelay: true           # Nagle off on every socket (the default; explicit so the run records it)
+  http:
+    endpoint:
+      host: cloud
+      port: 8080
+    client:
+      keep_alive: true
+      timeout_s: 5
+      max_connections: 250    # bounded pool like 09; only 01 runs unbounded to show the churn
+    server:
+      bind_host: 0.0.0.0

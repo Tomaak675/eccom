@@ -1,0 +1,55 @@
+# Simulated IoT devices over HTTP: each device fires on its own interval.
+# Sensor payloads are hardcoded readings; camera/generic are fixed random
+# bytes of the configured size (deterministic per device+seed).
+name: iot_devices_http
+
+topology:
+  sender: edge
+  receiver: cloud
+
+protocol:
+  type: http
+  http:
+    endpoint:
+      host: 127.0.0.1
+      port: 8080
+    client:
+      keep_alive: true
+      timeout_s: 5
+    server:
+      bind_host: 127.0.0.1
+
+load:
+  mode: devices
+  duration_s: 60
+
+devices:
+  - name: meter-1
+    type: smart_meter            # smart electricity meter, hardcoded reading
+    interval_s: 1.0
+  - name: meter-2
+    type: smart_meter
+    interval_s: 1.0
+  - name: temp-1
+    type: temperature_sensor     # hardcoded temperature/humidity reading
+    interval_s: 5.0
+  - name: cam-1
+    type: camera                 # image blob (default 100 kB, configurable)
+    interval_s: 10.0
+    size_bytes: 65536
+  - name: blob-1
+    type: generic                # arbitrary bytes of the given size
+    interval_s: 0.5
+    size_bytes: 4096
+
+receiver:
+  artificial_processing_delay_ms: 0
+  control_port: 8081
+
+experiment:
+  warmup_s: 5
+  cooldown_s: 2
+
+instrumentation:
+  system_metrics: true
+  system_metrics_interval_s: 1.0

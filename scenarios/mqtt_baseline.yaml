@@ -1,0 +1,45 @@
+# Baseline MQTT v5 request/reply experiment, mirroring http_baseline.
+# The runner starts a mosquitto Docker container on the receiver's host by
+# default (configure via the hosts file's broker section).
+name: mqtt_request_response_baseline
+
+topology:
+  sender: edge
+  receiver: cloud
+
+protocol:
+  type: mqtt
+  mqtt:
+    endpoint:            # broker, as reachable from both agents
+      host: 127.0.0.1
+      port: 1883
+    client:
+      qos: 1
+      keepalive_s: 60
+      clean_start: true
+      timeout_s: 5
+    base_topic: eccom
+  tls:
+    enabled: false
+
+payload:
+  size_bytes: 1024
+  content: zeros
+
+load:
+  mode: constant_rate
+  messages_per_second: 100
+  duration_s: 60
+  concurrency: 10
+
+receiver:
+  artificial_processing_delay_ms: 0
+  control_port: 8081
+
+experiment:
+  warmup_s: 10
+  cooldown_s: 5
+
+instrumentation:
+  system_metrics: true
+  system_metrics_interval_s: 1.0

@@ -1,0 +1,46 @@
+# scenario1: baseline latency (128 B random payload, 1 msg/s x 60 s).
+# See 01_http.yaml.
+# Identical traffic in every file; only the protocol block differs.
+#
+# QoS 0 variant of 04_mqtt_qos1: no broker acknowledgement, so send-ack is
+# the publish call returning and delivery is the only end-to-end figure.
+name: s1_mqtt_qos0
+interaction: one_way
+
+topology:
+  sender: edge
+  receiver: cloud
+
+payload:
+  size_bytes: 128
+  content: random
+  seed: 42
+
+load:
+  mode: constant_rate
+  messages_per_second: 1
+  duration_s: 60
+  concurrency: 1
+
+receiver:
+  artificial_processing_delay_ms: 0
+  control_port: 8081
+  control_bind_host: 0.0.0.0
+
+experiment:
+  warmup_s: 5
+  cooldown_s: 2
+
+instrumentation:
+  system_metrics: true
+  system_metrics_interval_s: 1.0
+
+protocol:
+  type: mqtt
+  mqtt:
+    endpoint:
+      host: cloud
+      port: 1883
+    client:
+      qos: 0
+      timeout_s: 5

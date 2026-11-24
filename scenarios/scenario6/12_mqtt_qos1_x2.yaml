@@ -1,0 +1,66 @@
+# scenario6: how many referential smart homes (60 devices, 292 msg/s, ~129.5
+# kB/s each) one Python sender forwards to the Go receiver per protocol
+# variant and aggregation factor; 12-step ramp, k homes added per step. See
+# 01_http_x1.yaml and docs/scenario-parameters.md.
+# MQTT baseline. The client's max_inflight_messages must be >=
+# load.concurrency, otherwise paho queues publishes locally and send-ack
+# measures client-side queueing (paho ignores the broker's Receive Maximum, so
+# this is the only cap). The broker limits are lifted so a slow subscriber
+# builds a backlog instead of mosquitto silently dropping messages past its
+# default queue.
+name: s6_mqtt_qos1_x2
+interaction: one_way
+
+topology:
+  sender: edge
+  receiver: cloud
+
+home:                          # the referential smart home, camera excluded
+  seed: 42
+  sensors:
+    - { type: light,       count: 4,  rate_hz: 1,  size_bytes: 4 }
+    - { type: smart_plug,  count: 40, rate_hz: 1,  size_bytes: 16 }
+    - { type: temperature, count: 4,  rate_hz: 1,  size_bytes: 4 }
+    - { type: motion,      count: 4,  rate_hz: 1,  size_bytes: 4 }
+    - { type: microphone,  count: 4,  rate_hz: 50, size_bytes: 640 }
+    - { type: mmwave,      count: 4,  rate_hz: 10, size_bytes: 20 }
+
+load:
+  mode: homes
+  homes: 2                     # first step: one batch of homes per sensor slot = 292 msg/s
+  homes_increment: 2           # one more batch per step: +292 msg/s per step for every factor
+  aggregation_factor: 2        # readings of one sensor slot across this many homes travel as one message
+  step_duration_s: 10
+  step_pause_s: 10             # quiet gap after every step: the backlog drains, the next step starts empty
+  duration_s: 120              # 12 steps of sending: 2 -> 24 homes, 292 -> 3504 msg/s
+  concurrency: 10000           # sized so it never limits the schedule; the HTTP pool and the MQTT window are the caps
+
+receiver:
+  artificial_processing_delay_ms: 0
+  control_port: 8081
+  control_bind_host: 0.0.0.0
+  implementation: go           # a Python agent is one event loop on one core; the Go receiver uses every core
+
+experiment:
+  warmup_s: 5                  # the ramp truncated to its first step
+  cooldown_s: 10               # lets the receiver drain its backlog before shutdown
+
+instrumentation:
+  system_metrics: true
+  system_metrics_interval_s: 1.0
+  link_capacity: true          # iperf3 both ways before the run: records the uplink capacity next to the x4/x8 byte rates
+
+protocol:
+  type: mqtt
+  tcp_nodelay: true           # Nagle off on every socket (the default; explicit so the run records it)
+  mqtt:
+    endpoint:
+      host: cloud
+      port: 1883
+    client:
+      qos: 1
+      timeout_s: 5
+      max_inflight_messages: 10000
+    broker:
+      max_inflight_messages: 10000   # = the client's window; mosquitto 2.1 turns 0 into a quota of 20 plus a warning per publish
+      max_queued_messages: 0

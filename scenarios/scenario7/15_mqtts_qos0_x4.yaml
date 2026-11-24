@@ -1,0 +1,69 @@
+# scenario7: scenario6's homes ramp (60 devices, 292 msg/s, ~129.5 kB/s per
+# home) with TLS on all six TLS-capable variants; each file runs a four-step
+# window placed just below the ceiling expected on your hardware. See
+# 01_https_x1.yaml and docs/scenario-parameters.md.
+# QoS 0 over TLS (scenario6's mqtt_qos0 on the broker's 8883 listener). No
+# acknowledgement, so no in-flight window applies anywhere and send-ack is the
+# local cost of handing bytes to the TLS socket; delivery and the receiver's
+# own counters carry the saturation signal here.
+name: s7_mqtts_qos0_x4
+interaction: one_way
+
+topology:
+  sender: edge
+  receiver: cloud
+
+home:                          # the referential smart home, camera excluded
+  seed: 42
+  sensors:
+    - { type: light,       count: 4,  rate_hz: 1,  size_bytes: 4 }
+    - { type: smart_plug,  count: 40, rate_hz: 1,  size_bytes: 16 }
+    - { type: temperature, count: 4,  rate_hz: 1,  size_bytes: 4 }
+    - { type: motion,      count: 4,  rate_hz: 1,  size_bytes: 4 }
+    - { type: microphone,  count: 4,  rate_hz: 50, size_bytes: 640 }
+    - { type: mmwave,      count: 4,  rate_hz: 10, size_bytes: 20 }
+
+load:
+  mode: homes
+  homes: 24                    # first step: 6 batches of 4 homes per sensor slot = 1752 msg/s; set just below the ceiling you expect
+  homes_increment: 4           # one more batch per step: +292 msg/s per step for every factor
+  aggregation_factor: 4        # readings of one sensor slot across this many homes travel as one message
+  step_duration_s: 10
+  step_pause_s: 10             # quiet gap after every step: the backlog drains, the next step starts empty
+  duration_s: 40               # 4 steps of sending: 24 -> 36 homes, 1752 -> 2628 msg/s
+  concurrency: 10000           # sized so it never limits the schedule; the HTTP pool and the MQTT window are the caps
+
+receiver:
+  artificial_processing_delay_ms: 0
+  control_port: 8081
+  control_bind_host: 0.0.0.0
+  implementation: go           # a Python agent is one event loop on one core; the Go receiver uses every core
+
+experiment:
+  warmup_s: 5                  # the ramp truncated to its first step
+  cooldown_s: 10               # lets the receiver drain its backlog before shutdown
+
+instrumentation:
+  system_metrics: true
+  system_metrics_interval_s: 1.0
+  link_capacity: true          # iperf3 both ways before the run: records the uplink capacity next to the x4/x8 byte rates
+
+protocol:
+  type: mqtt
+  tcp_nodelay: true           # Nagle off on every socket (the default; explicit so the run records it)
+  mqtt:
+    endpoint:
+      host: cloud
+      port: 8883
+    client:
+      qos: 0
+      timeout_s: 5
+      max_inflight_messages: 10000
+    broker:
+      max_inflight_messages: 0   # unlimited: the backlog must show as latency, not loss
+      max_queued_messages: 0
+  tls:
+    enabled: true
+    cert_file: certs/server.pem
+    key_file: certs/server-key.pem
+    ca_file: certs/server.pem

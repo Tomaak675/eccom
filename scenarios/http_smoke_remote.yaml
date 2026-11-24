@@ -1,0 +1,42 @@
+# Short HTTP smoke test against a remote receiver (~15 s of traffic); run
+# with --hosts.
+name: http_smoke_remote
+
+topology:
+  sender: edge
+  receiver: cloud
+
+protocol:
+  type: http
+  http:
+    endpoint:
+      host: cloud            # the receiver's role; the hosts file supplies its address
+      port: 8080
+    client:
+      keep_alive: true
+      timeout_s: 5
+    server:
+      bind_host: 0.0.0.0     # remote receiver must bind all interfaces
+
+payload:
+  size_bytes: 1024
+  content: zeros
+
+load:
+  mode: constant_rate
+  messages_per_second: 20
+  duration_s: 10
+  concurrency: 5
+
+receiver:
+  artificial_processing_delay_ms: 0
+  control_port: 8081
+  control_bind_host: 0.0.0.0   # orchestrator health checks + sender clock probes
+
+experiment:
+  warmup_s: 2
+  cooldown_s: 1
+
+instrumentation:
+  system_metrics: true
+  system_metrics_interval_s: 1.0

@@ -1,0 +1,71 @@
+# scenario5: scenario4's matrix with the Go sender (one process, six
+# threads) and the Go receiver under a linear ramp towards the uplink's
+# capacity: up to 43200 msg/s (2400 + 2400 per 10 s step, 18 steps, 10 s
+# pauses, 32 B random payload, 10 000 in flight). See 01_http.yaml.
+# Identical traffic in every file; only the protocol block differs.
+#
+# Broker variant of 08_mqtt_req_rsp: NanoMQ instead of mosquitto (see 11
+# for the broker's properties). Every message waits for an application
+# reply that is a second publish through the broker, so the broker relays
+# twice per request: the heaviest broker load of the suite. Both Go agents
+# publish at QoS 1 under their own window (65535; NanoMQ announces no
+# Receive Maximum), so load.concurrency bounds the requests in flight and
+# the receiver's replies are never held back by a broker window — but
+# NanoMQ disconnects either connection that reaches 1024 unacknowledged
+# publishes (its fixed per-connection limit, see 11), so a broker backlog
+# shows up as a reconnect on the sender or the receiver.
+name: s5_nanomq_req_rsp
+interaction: request_response
+
+topology:
+  sender: edge
+  receiver: cloud
+
+payload:
+  size_bytes: 32
+  content: random
+  seed: 42
+
+load:
+  mode: ramp
+  messages_per_second: 2400    # first step; also one of scenario4's offered rates
+  rate_increment: 2400         # +2400 msg/s per step (4 x scenario4's 600): every step up to 14400 is one of scenario4's rates
+  step_duration_s: 10
+  step_pause_s: 10             # quiet gap after every step: the backlog drains, the next step starts empty
+  duration_s: 180              # 18 steps of sending: 2400 -> 43200 msg/s
+  concurrency: 10000           # whole process (scenario4 splits the same 10 000 over six); sized so it never limits the schedule
+  senders: 1                   # one Go process; its parallelism is sender.threads
+
+sender:
+  implementation: go           # one process pacing the schedule over `threads` goroutines; a Python sender needs a process per core
+  threads: 6                   # GOMAXPROCS, pacing goroutines and the container's docker --cpus cap (sender.cpus overrides); leave some cores free for the kernel, dockerd and sshd
+
+receiver:
+  artificial_processing_delay_ms: 0
+  control_port: 8081
+  control_bind_host: 0.0.0.0
+  implementation: go           # as in scenario4: uses every core of the receiver's host
+
+experiment:
+  warmup_s: 5
+  cooldown_s: 10
+
+instrumentation:
+  system_metrics: true
+  system_metrics_interval_s: 1.0
+  link_capacity: true          # iperf3 both ways before the run
+
+protocol:
+  type: mqtt
+  tcp_nodelay: true           # Nagle off on every socket (the default; explicit so the run records it; NanoMQ cannot run otherwise)
+  mqtt:
+    endpoint:
+      host: cloud
+      port: 1883
+    client:
+      qos: 1
+      timeout_s: 5
+      max_inflight_messages: 10000   # Python-paho knob, inert for the Go agents; kept so the file reads like 08
+    broker:
+      implementation: nanomq         # the mosquitto twin is 08; NanoMQ takes no in-flight setting (a fixed 1024 per connection, disconnect beyond), so no max_inflight_messages here (both Go agents' own is 65535)
+      max_queued_messages: 0         # lifted as in 08: 0 = NanoMQ's largest per-subscriber queue (2^20), not unlimited

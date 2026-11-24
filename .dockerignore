@@ -1,0 +1,9 @@
+.git
+.venv
+.ssh
+runs
+hosts
+tests
+__pycache__
+**/__pycache__
+*.pyc

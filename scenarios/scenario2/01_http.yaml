@@ -1,0 +1,57 @@
+# scenario2: throughput ceiling. Scenario1's protocol matrix under a ramped
+# load: 32 B random payload; the rate doubles every 5 s from 10 msg/s for
+# 60 s (12 steps, nominally 10 -> 20480 msg/s) with up to 10 000 sends in
+# flight. The ramp is meant to run past what the hosts can sustain, so the
+# last steps double as the "as fast as possible" measurement; the per-step
+# table (summary.json "ramp", plots/ramp_over_time.png) locates the knee.
+# Identical traffic in every file; only the protocol block differs.
+# Run the whole suite:
+#   eccom run scenarios/scenario2 --hosts hosts/<your-hosts>.yaml --pause-s 30
+#
+# HTTP baseline: plain HTTP over keep-alive connections.
+name: s2_http
+interaction: one_way
+
+topology:
+  sender: edge
+  receiver: cloud
+
+payload:
+  size_bytes: 32
+  content: random
+  seed: 42
+
+load:
+  mode: ramp
+  messages_per_second: 10      # first step
+  rate_multiplier: 2
+  step_duration_s: 5
+  step_pause_s: 10             # quiet gap after every step: the backlog drains, the next step starts empty
+  duration_s: 60               # 12 steps: 10 -> 20480 msg/s nominal
+  concurrency: 10000           # in-flight cap, sized so it never limits the schedule
+
+receiver:
+  artificial_processing_delay_ms: 0
+  control_port: 8081
+  control_bind_host: 0.0.0.0
+
+experiment:
+  warmup_s: 5                  # the ramp truncated to its first step
+  cooldown_s: 10               # lets the receiver drain its backlog before shutdown
+
+instrumentation:
+  system_metrics: true
+  system_metrics_interval_s: 1.0
+
+protocol:
+  type: http
+  tcp_nodelay: true           # Nagle off on every socket (the default; explicit so the run records it)
+  http:
+    endpoint:
+      host: cloud
+      port: 8080
+    client:
+      keep_alive: true
+      timeout_s: 5
+    server:
+      bind_host: 0.0.0.0

@@ -1,0 +1,43 @@
+# Baseline HTTP request/response experiment (constant-rate uniform payload).
+name: http_request_response_baseline
+
+topology:
+  sender: edge
+  receiver: cloud
+
+protocol:
+  type: http
+  http:
+    endpoint:            # where the receiver is reachable (sender connects here)
+      host: 127.0.0.1
+      port: 8080
+    client:              # sender-side settings
+      keep_alive: true
+      timeout_s: 5
+    server:              # receiver-side settings
+      bind_host: 127.0.0.1
+  tls:
+    enabled: false
+
+payload:
+  size_bytes: 1024
+  content: zeros
+
+load:
+  mode: constant_rate
+  messages_per_second: 100
+  duration_s: 60
+  concurrency: 10
+
+receiver:
+  artificial_processing_delay_ms: 0
+  control_port: 8081
+
+experiment:
+  warmup_s: 10
+  cooldown_s: 5
+
+instrumentation:
+  system_metrics: true
+  system_metrics_interval_s: 1.0
+  network_capture: false

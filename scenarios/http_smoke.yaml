@@ -1,0 +1,40 @@
+# Short smoke-test variant of the baseline: ~15 s end to end.
+name: http_smoke
+
+topology:
+  sender: edge
+  receiver: cloud
+
+protocol:
+  type: http
+  http:
+    endpoint:
+      host: 127.0.0.1
+      port: 8080
+    client:
+      keep_alive: true
+      timeout_s: 5
+    server:
+      bind_host: 127.0.0.1
+
+payload:
+  size_bytes: 1024
+  content: zeros
+
+load:
+  mode: constant_rate
+  messages_per_second: 50
+  duration_s: 10
+  concurrency: 5
+
+receiver:
+  artificial_processing_delay_ms: 0
+  control_port: 8081
+
+experiment:
+  warmup_s: 2
+  cooldown_s: 1
+
+instrumentation:
+  system_metrics: true
+  system_metrics_interval_s: 1.0

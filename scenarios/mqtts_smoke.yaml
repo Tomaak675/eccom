@@ -1,0 +1,44 @@
+# MQTT over TLS smoke test: the managed mosquitto broker gets a TLS listener
+# automatically (certs shipped from scenarios/certs, see https_smoke.yaml for
+# how to generate them). Port 8883 is the MQTT-over-TLS convention.
+name: mqtts_smoke
+
+topology:
+  sender: edge
+  receiver: cloud
+
+protocol:
+  type: mqtt
+  mqtt:
+    endpoint:
+      host: 127.0.0.1
+      port: 8883
+    client:
+      qos: 1
+      timeout_s: 5
+  tls:
+    enabled: true
+    cert_file: certs/server.pem
+    key_file: certs/server-key.pem
+    ca_file: certs/server.pem
+
+payload:
+  size_bytes: 1024
+  content: zeros
+
+load:
+  mode: constant_rate
+  messages_per_second: 50
+  duration_s: 10
+  concurrency: 5
+
+receiver:
+  artificial_processing_delay_ms: 0
+  control_port: 8081
+
+experiment:
+  warmup_s: 2
+  cooldown_s: 1
+
+instrumentation:
+  system_metrics: true

@@ -1,0 +1,40 @@
+# MQTT baseline for Docker Compose: agents reach the broker via the compose
+# service name "broker" (started with the "mqtt" profile).
+name: mqtt_request_response_baseline_compose
+
+topology:
+  sender: edge
+  receiver: cloud
+
+protocol:
+  type: mqtt
+  mqtt:
+    endpoint:
+      host: broker
+      port: 1883
+    client:
+      qos: 1
+      timeout_s: 5
+
+payload:
+  size_bytes: 1024
+  content: zeros
+
+load:
+  mode: constant_rate
+  messages_per_second: 100
+  duration_s: 60
+  concurrency: 10
+
+receiver:
+  artificial_processing_delay_ms: 0
+  control_port: 8081
+  control_bind_host: 0.0.0.0   # the edge container probes the clock via this port
+
+experiment:
+  warmup_s: 10
+  cooldown_s: 5
+
+instrumentation:
+  system_metrics: true
+  system_metrics_interval_s: 1.0

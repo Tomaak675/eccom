@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eccom"
+version = "0.1.0"
+description = "Experimental Edge-to-Cloud communication measurement framework"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "aiohttp>=3.10",
+    "aiomqtt>=2.0",
+    "asyncssh>=2.14",
+    "pydantic>=2.7",
+    "PyYAML>=6.0",
+    "psutil>=5.9",
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "matplotlib>=3.8",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+
+[project.scripts]
+eccom = "eccom.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["eccom*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
